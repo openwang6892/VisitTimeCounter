@@ -1,1 +1,2 @@
-psycopg2-binary==2.9.7
+# For PostgreSQL support (optional)
+# psycopg2-binary==2.9.7

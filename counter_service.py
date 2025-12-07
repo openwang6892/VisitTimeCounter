@@ -13,21 +13,19 @@ def _get_db_connection():
             import psycopg2
             return psycopg2.connect(DATABASE_URL), 'postgres'
         except ImportError:
-            DB_FILE = 'counter.db'
-            return sqlite3.connect(DB_FILE), 'sqlite'
-        except Exception as e:
-            DB_FILE = 'counter.db'
-            return sqlite3.connect(DB_FILE), 'sqlite'
-    else:
-        DB_FILE = 'counter.db'
-        return sqlite3.connect(DB_FILE), 'sqlite'
+            pass  # psycopg2 not installed, fall back to SQLite
+        except Exception:
+            pass  # Connection failed, fall back to SQLite
+    # Use SQLite as fallback
+    DB_FILE = 'counter.db'
+    return sqlite3.connect(DB_FILE), 'sqlite'
 
 def init_db():
     conn, db_type = _get_db_connection()
     try:
+        c = conn.cursor()
         if db_type == 'postgres':
             import psycopg2
-            c = conn.cursor()
             c.execute('''CREATE TABLE IF NOT EXISTS counter
                          (id INTEGER PRIMARY KEY, count INTEGER DEFAULT 0)''')
             c.execute('''CREATE TABLE IF NOT EXISTS records
@@ -37,7 +35,6 @@ def init_db():
             if result is None:
                 c.execute("INSERT INTO counter (id, count) VALUES (1, 0)")
         else:
-            c = conn.cursor()
             c.execute('''CREATE TABLE IF NOT EXISTS counter
                          (id INTEGER PRIMARY KEY, count INTEGER DEFAULT 0)''')
             c.execute('''CREATE TABLE IF NOT EXISTS records
@@ -53,15 +50,13 @@ def init_db():
 def get_counter():
     conn, db_type = _get_db_connection()
     try:
+        c = conn.cursor()
         if db_type == 'postgres':
             import psycopg2
-            c = conn.cursor()
             c.execute("SELECT count FROM counter WHERE id = 1")
-            result = c.fetchone()
         else:
-            c = conn.cursor()
             c.execute("SELECT count FROM counter WHERE id = 1")
-            result = c.fetchone()
+        result = c.fetchone()
         return result[0] if result else 0
     finally:
         conn.close()
@@ -69,13 +64,11 @@ def get_counter():
 def save_counter(count):
     conn, db_type = _get_db_connection()
     try:
+        c = conn.cursor()
         if db_type == 'postgres':
             import psycopg2
-            c = conn.cursor()
-            c.execute("INSERT INTO counter (id, count) VALUES (1, %s) ON CONFLICT (id) DO UPDATE SET count = %s", (count, count))
+            c.execute("INSERT INTO counter (id, count) VALUES (1, %s) ON CONFLICT (id) DO UPDATE SET count = EXCLUDED.count", (count,))
         else:
-            c = conn.cursor()
-            c.execute("UPDATE counter SET count = ? WHERE id = 1", (count,))
             c.execute("INSERT OR REPLACE INTO counter (id, count) VALUES (1, ?)", (count,))
         conn.commit()
     finally:
@@ -85,12 +78,11 @@ def add_record():
     conn, db_type = _get_db_connection()
     try:
         ts = int(time.time())
+        c = conn.cursor()
         if db_type == 'postgres':
             import psycopg2
-            c = conn.cursor()
             c.execute("INSERT INTO records (ts, count) VALUES (%s, 1) ON CONFLICT (ts) DO UPDATE SET count = records.count + 1", (ts,))
         else:
-            c = conn.cursor()
             c.execute("INSERT OR IGNORE INTO records (ts, count) VALUES (?, 1)", (ts,))
             c.execute("UPDATE records SET count = count + 1 WHERE ts = ?", (ts,))
         conn.commit()
